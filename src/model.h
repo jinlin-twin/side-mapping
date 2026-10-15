@@ -16,16 +16,22 @@ struct Binding {
     unsigned key=0; // Zero preserves the original mouse action.
     bool operator==(const Binding&) const = default;
 };
+struct MappingScheme {
+    std::wstring name=L"默认方案";
+    std::array<Binding,2> bindings{};
+};
 struct Profile {
     std::wstring id, hardwareId, name;
     int sideCount=2;
     int singleSideIndex=0;
-    std::array<Binding,2> bindings{};
+    std::vector<MappingScheme> schemes{MappingScheme{}};
+    size_t activeScheme=0;
 };
 struct Config {
     bool enabled=true, showOnConnect=true;
     std::wstring preferredProfile;
     std::vector<Profile> profiles;
+    bool needsMigrationBackup=false;
 };
 struct Device {
     HANDLE handle=nullptr;
@@ -38,6 +44,13 @@ std::wstring KeyName(unsigned key);
 std::wstring ShortcutText(const Binding& binding);
 std::wstring ActionName(const Binding& binding);
 bool ValidBinding(const Binding& binding);
+MappingScheme& CurrentScheme(Profile&);
+const MappingScheme& CurrentScheme(const Profile&);
+std::array<Binding,2>& CurrentBindings(Profile&);
+const std::array<Binding,2>& CurrentBindings(const Profile&);
+bool AddScheme(Profile&,const std::wstring& name,std::wstring& error);
+bool RenameCurrentScheme(Profile&,const std::wstring& name,std::wstring& error);
+bool DeleteCurrentScheme(Profile&,std::wstring& error);
 int PhysicalButton(const Profile&,int displayedIndex);
 std::array<Binding,2> EffectiveBindings(const Profile&);
 bool LoadConfig(const std::filesystem::path&, Config&, std::wstring& error);

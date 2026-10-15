@@ -8,6 +8,8 @@ constexpr UINT WM_TRAY=WM_APP+40,WM_SHOW_MAIN=WM_APP+41;
 class App {
     struct Hit{D2D1_RECT_F rect;int action;};
     enum class Modal{None,Edit,Settings,Rename};
+    enum class NamePurpose{Device,NewScheme,Scheme};
+    NamePurpose namePurpose=NamePurpose::Device;
     HWND window=nullptr,quickWindow=nullptr,nameEdit=nullptr;
     HICON icon=nullptr;
     Graphics graphics;
@@ -40,6 +42,9 @@ class App {
     void ShowQuick(bool automatic=false);
     void HideQuick();
     void OpenEdit(int index);
+    void OpenNameDialog(NamePurpose);
+    void SchemeMenu();
+    void SwitchScheme(int profileIndex,size_t schemeIndex);
     void CloseModal();
     void Activate(int action);
     int HitTest(float x,float y) const;

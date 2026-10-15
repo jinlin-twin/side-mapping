@@ -7,6 +7,7 @@
 
 namespace side {
 constexpr int Enable=1,Settings=2,Quick=3,EditFirst=4,EditSecond=5,Count=6,Rename=7,ChooseDevice=8;
+constexpr int ChooseScheme=9,NewScheme=10,RenameScheme=11,DeleteScheme=12,SchemeBase=2000;
 constexpr int CloseModalAction=20,Record=21,SaveBinding=22,Restore=23,Startup=24,ConnectNotice=25,OpenFolder=26,SaveName=27;
 constexpr int ProfileBase=100,PresetBase=1000;
 constexpr UINT RefreshTimer=1,HighlightTimer=2,NoticeTimer=3,QuickTimer=4;
@@ -56,6 +57,8 @@ void App::DrawMain(Painter& p) {
             for(size_t i=0;i<config.profiles.size();++i){float x=32+float(i)*width;bool chosen=selected==int(i);if(chosen){p.Fill(x,92,width-8,40,c.bg,8);p.Border(x+.5f,92.5f,width-9,39,c.line,8);}p.Text(config.profiles[i].name,x+12,92,width-32,40,13,chosen?c.ink:c.muted,chosen);AddHit(x,92,width-8,40,ProfileBase+int(i));}
         } else Button(p,config.profiles[selected].name+L"  ▾",28,88,644,48,ChooseDevice);
         const auto& profile=config.profiles[selected];
+        Button(p,L"方案 · "+CurrentScheme(profile).name+L"  ▾",348,197,232,29,ChooseScheme);
+        Button(p,L"＋ 新建",588,197,84,29,NewScheme);
         p.Text(profile.name,28,153,235,35,20,c.ink,true);Button(p,L"改名",267,157,46,27,Rename);
         Button(p,std::to_wstring(profile.sideCount)+L" 个侧键 ▾",395,157,105,28,Count);
         std::wstring status=selected==active&&config.enabled&&canWrite&&selectionConfirmed&&engineReady&&rawReady?L"当前使用":SelectedConnected()?L"已连接":L"未连接";
@@ -77,8 +80,8 @@ void App::DrawMain(Painter& p) {
             p.Fill(x,y,324,89,hoverAction==(button==0?EditFirst:EditSecond)?c.soft:c.bg,12);p.Border(x+.5f,y+.5f,323,88,pulse?c.green:c.line,12,pulse?1.5f:1);
             p.Fill(x+16,y+29,28,28,c.tint,8);p.Text(std::to_wstring(i+1),x+16,y+29,28,28,12,c.green,false,DWRITE_TEXT_ALIGNMENT_CENTER);
             p.Text(L"侧键 "+std::to_wstring(i+1),x+58,y+13,115,23,11,c.muted);
-            p.Text(ActionName(profile.bindings[button]),x+159,y+13,131,23,12,c.ink,false,DWRITE_TEXT_ALIGNMENT_TRAILING);
-            p.Keycaps(profile.bindings[button],x+58,y+44,228);p.Chevron(x+302,y+40,c.muted);AddHit(x,y,324,89,button==0?EditFirst:EditSecond);
+            p.Text(ActionName(CurrentBindings(profile)[button]),x+159,y+13,131,23,12,c.ink,false,DWRITE_TEXT_ALIGNMENT_TRAILING);
+            p.Keycaps(CurrentBindings(profile)[button],x+58,y+44,228);p.Chevron(x+302,y+40,c.muted);AddHit(x,y,324,89,button==0?EditFirst:EditSecond);
         }
         p.Text(L"在本窗口按侧键，识别设备与按键",348,454,324,24,11,c.muted,false,DWRITE_TEXT_ALIGNMENT_CENTER);
     }
@@ -95,10 +98,10 @@ void App::DrawModal(Painter& p) {
     auto& c=p.colors;p.Fill(0,0,W,H,c.ink,0,.15f);hits.clear();
     const float x=170,y=modal==Modal::Edit?103:135,width=360,height=modal==Modal::Edit?386:modal==Modal::Settings?300:260;
     p.Fill(x+3,y+9,width,height,c.ink,15,.08f);p.Fill(x,y,width,height,c.bg,15);p.Border(x+.5f,y+.5f,width-1,height-1,c.line,15);
-    std::wstring title=modal==Modal::Edit?L"设置侧键 "+std::to_wstring(selected>=0&&config.profiles[selected].sideCount==1?1:editingButton+1):modal==Modal::Settings?L"设置":L"给鼠标起个名字";
+    std::wstring title=modal==Modal::Edit?L"设置侧键 "+std::to_wstring(selected>=0&&config.profiles[selected].sideCount==1?1:editingButton+1):modal==Modal::Settings?L"设置":namePurpose==NamePurpose::Device?L"给鼠标起个名字":namePurpose==NamePurpose::NewScheme?L"新建方案":L"重命名方案";
     p.Text(title,x+22,y+17,260,31,16,c.ink,true);p.Close(x+326,y+28,c.muted);AddHit(x+311,y+13,36,36,CloseModalAction);
     if(modal==Modal::Edit) {
-        p.Text(L"绑定到快捷键",x+22,y+66,300,24,11,c.muted);
+        p.Text(L"方案 · "+CurrentScheme(config.profiles[selected]).name,x+22,y+66,300,24,11,c.muted);
         p.Fill(x+22,y+96,316,64,recording?c.tint:c.soft,10);p.Border(x+22.5f,y+96.5f,315,63,recording?c.green:c.edge,10);
         if(recording)p.Text(L"请按下快捷键…",x+32,y+98,296,60,16,c.green,false,DWRITE_TEXT_ALIGNMENT_CENTER);
         else if(!draft.key)p.Text(L"点击这里，按下快捷键",x+32,y+98,296,60,14,c.muted,false,DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -113,22 +116,22 @@ void App::DrawModal(Painter& p) {
         p.Line(x+22,y+64,x+338,y+64,c.line);checkbox(L"开机时启动",y+70,previewMode?false:IsStartupEnabled(),Startup);
         p.Line(x+22,y+117,x+338,y+117,c.line);checkbox(L"接入鼠标后显示绑定提示",y+123,config.showOnConnect,ConnectNotice);
         p.Line(x+22,y+170,x+338,y+170,c.line);p.Text(L"快捷键速览",x+22,y+184,127,30,12,c.ink);p.Text(hotkeyReady||previewMode?L"Ctrl + Alt + M":L"快捷键被占用，可从托盘打开",x+143,y+184,195,30,11,c.muted,false,DWRITE_TEXT_ALIGNMENT_TRAILING);
-        Button(p,L"打开配置文件夹",x+22,y+235,151,34,OpenFolder);p.Text(L"侧映 0.1.0",x+225,y+235,113,34,11,c.muted,false,DWRITE_TEXT_ALIGNMENT_TRAILING);
+        Button(p,L"打开配置文件夹",x+22,y+235,151,34,OpenFolder);p.Text(L"侧映 0.2.0",x+225,y+235,113,34,11,c.muted,false,DWRITE_TEXT_ALIGNMENT_TRAILING);
     }else {
-        p.Text(L"设备名称",x+22,y+66,316,24,11,c.muted);
-        p.Text(L"名称只用于方便区分，不改变设备身份",x+22,y+140,316,24,11,c.muted);
+        p.Text(namePurpose==NamePurpose::Device?L"设备名称":L"方案名称",x+22,y+66,316,24,11,c.muted);
+        p.Text(namePurpose==NamePurpose::Device?L"名称只用于方便区分，不改变设备身份":namePurpose==NamePurpose::NewScheme?L"复制当前绑定，新方案的修改互不影响":L"仅修改名称，保留此方案全部绑定",x+22,y+140,316,24,11,c.muted);
         Button(p,L"保存名称",x+230,y+202,108,34,SaveName,true);
     }
 }
 void App::DrawQuick(Painter& p) {
     auto& c=p.colors;p.Fill(0,0,328,232,c.bg);
     p.MouseIcon(21,22,.95f,c.green);p.Text(L"快捷键速览",46,16,220,27,15,c.ink,true);
-    std::wstring name=active>=0?config.profiles[active].name:L"未连接鼠标";p.Text(name,46,43,240,20,11,c.muted);
+    std::wstring name=active>=0?config.profiles[active].name+L" · "+CurrentScheme(config.profiles[active]).name:L"未连接鼠标";p.Text(name,46,43,240,20,11,c.muted);
     p.Close(301,28,c.muted);
     if(active>=0) {
         const auto& profile=config.profiles[active];
         bool effective=config.enabled&&selectionConfirmed&&canWrite&&engineReady&&rawReady;
-        for(int i=0;i<profile.sideCount;++i){int button=PhysicalButton(profile,i);float y=80+i*62.f;p.Line(21,y,307,y,c.line);p.Text(L"侧键 "+std::to_wstring(i+1),21,y+7,100,19,10,c.muted);p.Text(effective?ActionName(profile.bindings[button]):L"原始功能",21,y+27,100,25,12,c.ink,true);if(effective)p.Keycaps(profile.bindings[button],133,y+21,174);else p.Text(L"映射已暂停",133,y+20,174,28,11,c.muted,false,DWRITE_TEXT_ALIGNMENT_TRAILING);}
+        for(int i=0;i<profile.sideCount;++i){int button=PhysicalButton(profile,i);float y=80+i*62.f;p.Line(21,y,307,y,c.line);p.Text(L"侧键 "+std::to_wstring(i+1),21,y+7,100,19,10,c.muted);p.Text(effective?ActionName(CurrentBindings(profile)[button]):L"原始功能",21,y+27,100,25,12,c.ink,true);if(effective)p.Keycaps(CurrentBindings(profile)[button],133,y+21,174);else p.Text(L"映射已暂停",133,y+20,174,28,11,c.muted,false,DWRITE_TEXT_ALIGNMENT_TRAILING);}
     } else p.Text(L"连接鼠标后显示它的绑定",21,87,286,73,13,c.muted,false,DWRITE_TEXT_ALIGNMENT_CENTER);
     p.Text(escapeHotkey||previewMode?L"Esc 收起 · 也可再次按 Ctrl + Alt + M":L"再次按 Ctrl + Alt + M 收起",21,207,286,20,10,c.muted,false,DWRITE_TEXT_ALIGNMENT_CENTER);
 }
@@ -146,6 +149,7 @@ void App::UpdateMapping() {
     input.Update(next);InvalidateRect(window,nullptr,FALSE);if(quickVisible)InvalidateRect(quickWindow,nullptr,FALSE);
 }
 void App::RefreshDevices(bool initial) {
+    if(modal!=Modal::None){CloseModal();Notify(L"设备发生变化，已取消未保存的编辑");}
     const int oldActive=active;const auto oldDevices=devices;devices=EnumerateMice();
     devices.erase(std::remove_if(devices.begin(),devices.end(),[](const Device& d){return !IsMouseCandidate(d);}),devices.end());
     bool changed=false;int newlyConnected=-1;int newCount=0;
@@ -179,8 +183,37 @@ void App::AddTray() {
 void App::ShowMain(){ShowWindow(window,SW_RESTORE);SetForegroundWindow(window);SetFocus(window);InvalidateRect(window,nullptr,FALSE);}
 void App::TrayMenu() {
     HMENU menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING,1,L"打开侧映");AppendMenuW(menu,MF_STRING,2,L"快捷键速览\tCtrl+Alt+M");AppendMenuW(menu,MF_STRING,3,config.enabled?L"暂停映射":L"恢复映射");AppendMenuW(menu,MF_SEPARATOR,0,nullptr);AppendMenuW(menu,MF_STRING,4,L"打开配置文件夹");AppendMenuW(menu,MF_STRING,5,L"退出侧映");
+    if(active>=0){HMENU schemes=CreatePopupMenu();const auto& profile=config.profiles[active];for(size_t i=0;i<profile.schemes.size();++i){std::wstring label;for(wchar_t ch:profile.schemes[i].name){label+=ch;if(ch==L'&')label+=ch;}AppendMenuW(schemes,MF_STRING|(i==profile.activeScheme?MF_CHECKED:0),SchemeBase+i,label.c_str());}InsertMenuW(menu,2,MF_BYPOSITION|MF_POPUP,reinterpret_cast<UINT_PTR>(schemes),L"切换方案");}
     POINT point{};GetCursorPos(&point);SetForegroundWindow(window);int result=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,point.x,point.y,0,window,nullptr);DestroyMenu(menu);PostMessageW(window,WM_NULL,0,0);
-    if(result==1)ShowMain();else if(result==2)ShowQuick();else if(result==3)Activate(Enable);else if(result==4)Activate(OpenFolder);else if(result==5){exiting=true;DestroyWindow(window);}
+    if(result==1)ShowMain();else if(result==2)ShowQuick();else if(result==3)Activate(Enable);else if(result==4)Activate(OpenFolder);else if(result==5){exiting=true;DestroyWindow(window);}else if(result>=SchemeBase&&result<SchemeBase+32&&active>=0){SwitchScheme(active,size_t(result-SchemeBase));ShowQuick(true);}
+}
+void App::SchemeMenu(){
+    if(selected<0)return;
+    HMENU menu=CreatePopupMenu();const auto& profile=config.profiles[selected];
+    for(size_t i=0;i<profile.schemes.size();++i){std::wstring label;for(wchar_t ch:profile.schemes[i].name){label+=ch;if(ch==L'&')label+=ch;}AppendMenuW(menu,MF_STRING|(i==profile.activeScheme?MF_CHECKED:0),SchemeBase+i,label.c_str());}
+    AppendMenuW(menu,MF_SEPARATOR,0,nullptr);AppendMenuW(menu,MF_STRING,NewScheme,L"新建方案…");AppendMenuW(menu,MF_STRING,RenameScheme,L"重命名当前方案…");AppendMenuW(menu,MF_STRING|(profile.schemes.size()==1?MF_GRAYED:0),DeleteScheme,L"删除当前方案…");
+    POINT point{348,228};float scale=GetDpiForWindow(window)/96.f;point.x=int(point.x*scale);point.y=int(point.y*scale);ClientToScreen(window,&point);
+    int result=TrackPopupMenu(menu,TPM_RETURNCMD,point.x,point.y,0,window,nullptr);DestroyMenu(menu);if(result)Activate(result);
+}
+void App::SwitchScheme(int profileIndex,size_t schemeIndex){
+    if(profileIndex<0||profileIndex>=int(config.profiles.size())||schemeIndex>=config.profiles[profileIndex].schemes.size())return;
+    if(modal!=Modal::None)CloseModal();
+    auto& profile=config.profiles[profileIndex];auto previous=profile.activeScheme;
+    profile.activeScheme=schemeIndex;
+    if(!Save()){profile.activeScheme=previous;UpdateMapping();return;}
+    keyboardFocus=-1;UpdateMapping();Notify(L"已切换："+profile.name+L" · "+CurrentScheme(profile).name);
+}
+void App::OpenNameDialog(NamePurpose purpose){
+    if(selected<0)return;
+    HideQuick();namePurpose=purpose;modal=Modal::Rename;keyboardFocus=-1;
+    const auto& profile=config.profiles[selected];std::wstring value;
+    if(purpose==NamePurpose::Device)value=profile.name;
+    else if(purpose==NamePurpose::Scheme)value=CurrentScheme(profile).name;
+    else{for(int i=1;;++i){value=L"新方案 "+std::to_wstring(i);if(std::none_of(profile.schemes.begin(),profile.schemes.end(),[&](const MappingScheme& s){return s.name==value;}))break;}}
+    float scale=GetDpiForWindow(window)/96.f;
+    nameEdit=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",value.c_str(),WS_CHILD|WS_VISIBLE|ES_AUTOHSCROLL,int(192*scale),int(233*scale),int(316*scale),int(35*scale),window,nullptr,GetModuleHandleW(nullptr),nullptr);
+    if(!nameEdit){CloseModal();Notify(L"无法打开名称输入框");return;}
+    SendMessageW(nameEdit,EM_SETLIMITTEXT,40,0);SendMessageW(nameEdit,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);SendMessageW(nameEdit,EM_SETSEL,0,-1);SetFocus(nameEdit);InvalidateRect(window,nullptr,FALSE);
 }
 void App::ShowQuick(bool automatic) {
     if(!quickWindow)return;
@@ -194,13 +227,18 @@ void App::ShowQuick(bool automatic) {
 void App::HideQuick(){if(!quickVisible)return;ShowWindow(quickWindow,SW_HIDE);quickVisible=false;if(escapeHotkey)UnregisterHotKey(window,2);escapeHotkey=false;KillTimer(window,QuickTimer);}
 void App::OpenEdit(int index) {
     if(selected<0||index<0||index>1||(config.profiles[selected].sideCount==1&&index!=config.profiles[selected].singleSideIndex))return;
-    HideQuick();editingButton=index;draft=config.profiles[selected].bindings[index];modal=Modal::Edit;recording=false;keyboardFocus=-1;InvalidateRect(window,nullptr,FALSE);
+    HideQuick();editingButton=index;draft=CurrentBindings(config.profiles[selected])[index];modal=Modal::Edit;recording=false;keyboardFocus=-1;InvalidateRect(window,nullptr,FALSE);
 }
 void App::CloseModal(){input.CancelRecording();recording=false;modal=Modal::None;if(nameEdit){DestroyWindow(nameEdit);nameEdit=nullptr;}keyboardFocus=-1;InvalidateRect(window,nullptr,FALSE);SetFocus(window);}
 void App::Activate(int action) {
     if(action==Enable){config.enabled=!config.enabled;Save();UpdateMapping();Notify(config.enabled?L"映射已恢复":L"已暂停，原始功能生效");}
     else if(action==Settings){HideQuick();modal=Modal::Settings;InvalidateRect(window,nullptr,FALSE);}
     else if(action==Quick)ShowQuick();
+    else if(action==ChooseScheme)SchemeMenu();
+    else if(action==NewScheme)OpenNameDialog(NamePurpose::NewScheme);
+    else if(action==RenameScheme)OpenNameDialog(NamePurpose::Scheme);
+    else if(action>=SchemeBase&&action<SchemeBase+32)SwitchScheme(selected,size_t(action-SchemeBase));
+    else if(action==DeleteScheme&&selected>=0){auto& profile=config.profiles[selected];if(profile.schemes.size()==1)return;std::wstring question=L"删除方案“"+CurrentScheme(profile).name+L"”？\n此方案的绑定也会删除，其他方案不受影响。";if(MessageBoxW(window,question.c_str(),L"侧映",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES)return;Profile previous=profile;std::wstring error;if(!DeleteCurrentScheme(profile,error)){Notify(error);return;}if(!Save()){profile=std::move(previous);UpdateMapping();return;}UpdateMapping();Notify(L"当前方案："+CurrentScheme(profile).name);}
     else if(action==EditFirst||action==EditSecond)OpenEdit(action==EditFirst?0:1);
     else if(action>=ProfileBase&&action<ProfileBase+100){selected=action-ProfileBase;highlight=-1;InvalidateRect(window,nullptr,FALSE);}
     else if(action==ChooseDevice){HMENU menu=CreatePopupMenu();for(size_t i=0;i<config.profiles.size();++i)AppendMenuW(menu,MF_STRING|(int(i)==selected?MF_CHECKED:0),UINT_PTR(ProfileBase+i),config.profiles[i].name.c_str());POINT pt{28,136};float scale=GetDpiForWindow(window)/96.f;pt.x=int(pt.x*scale);pt.y=int(pt.y*scale);ClientToScreen(window,&pt);int result=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_LEFTALIGN,pt.x,pt.y,0,window,nullptr);DestroyMenu(menu);if(result)Activate(result);}
@@ -209,12 +247,12 @@ void App::Activate(int action) {
     else if(action==Record){recording=true;input.BeginRecording();InvalidateRect(window,nullptr,FALSE);}
     else if(action==Restore){input.CancelRecording();recording=false;draft={};InvalidateRect(window,nullptr,FALSE);}
     else if(action>=PresetBase&&action<PresetBase+6){input.CancelRecording();recording=false;draft=presets[action-PresetBase];InvalidateRect(window,nullptr,FALSE);}
-    else if(action==SaveBinding&&modal==Modal::Edit&&!recording){if(!ValidBinding(draft))return;config.profiles[selected].bindings[editingButton]=draft;if(Save()){CloseModal();UpdateMapping();Notify(L"已保存 · "+config.profiles[selected].name+L" / 侧键 "+std::to_wstring(config.profiles[selected].sideCount==1?1:editingButton+1));}}
+    else if(action==SaveBinding&&modal==Modal::Edit&&!recording){if(!ValidBinding(draft))return;CurrentBindings(config.profiles[selected])[editingButton]=draft;if(Save()){CloseModal();UpdateMapping();Notify(L"已保存 · "+config.profiles[selected].name+L" / 侧键 "+std::to_wstring(config.profiles[selected].sideCount==1?1:editingButton+1));}}
     else if(action==Startup){std::wstring error;if(!SetStartupEnabled(!IsStartupEnabled(),executable.wstring(),error))Notify(error,true);InvalidateRect(window,nullptr,FALSE);}
     else if(action==ConnectNotice){config.showOnConnect=!config.showOnConnect;Save();InvalidateRect(window,nullptr,FALSE);}
     else if(action==OpenFolder)ShellExecuteW(window,L"open",executable.parent_path().c_str(),nullptr,nullptr,SW_SHOWNORMAL);
-    else if(action==Rename&&selected>=0){modal=Modal::Rename;float scale=GetDpiForWindow(window)/96.f;nameEdit=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",config.profiles[selected].name.c_str(),WS_CHILD|WS_VISIBLE|ES_AUTOHSCROLL,int(192*scale),int(233*scale),int(316*scale),int(35*scale),window,nullptr,GetModuleHandleW(nullptr),nullptr);SendMessageW(nameEdit,EM_SETLIMITTEXT,40,0);SendMessageW(nameEdit,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);SendMessageW(nameEdit,EM_SETSEL,0,-1);SetFocus(nameEdit);InvalidateRect(window,nullptr,FALSE);}
-    else if(action==SaveName&&nameEdit){wchar_t name[81]{};GetWindowTextW(nameEdit,name,81);std::wstring value=name;auto first=value.find_first_not_of(L" \t\r\n"),last=value.find_last_not_of(L" \t\r\n");if(first==std::wstring::npos){Notify(L"设备名称不能为空");return;}config.profiles[selected].name=value.substr(first,last-first+1);if(Save()){CloseModal();Notify(L"设备名称已保存");}}
+    else if(action==Rename)OpenNameDialog(NamePurpose::Device);
+    else if(action==SaveName&&nameEdit){wchar_t name[81]{};GetWindowTextW(nameEdit,name,81);std::wstring value=name;auto first=value.find_first_not_of(L" \t\r\n"),last=value.find_last_not_of(L" \t\r\n");if(first==std::wstring::npos){MessageBoxW(window,L"名称不能为空。",L"侧映",MB_OK|MB_ICONINFORMATION);return;}value=value.substr(first,last-first+1);auto& profile=config.profiles[selected];Profile previous=profile;std::wstring error;bool valid=true;if(namePurpose==NamePurpose::Device)profile.name=value;else if(namePurpose==NamePurpose::NewScheme)valid=AddScheme(profile,value,error);else valid=RenameCurrentScheme(profile,value,error);if(!valid){MessageBoxW(window,error.c_str(),L"侧映",MB_OK|MB_ICONINFORMATION);return;}if(Save()){CloseModal();UpdateMapping();Notify(L"已保存："+profile.name+L" · "+CurrentScheme(profile).name);}else{profile=std::move(previous);UpdateMapping();}}
 }
 void App::ResizeForDpi(UINT dpi,const RECT* suggested) {
     RECT rect{0,0,MulDiv(int(W),dpi,96),MulDiv(int(H),dpi,96)};
@@ -273,7 +311,7 @@ LRESULT App::Handle(UINT message,WPARAM wp,LPARAM lp) {
         UINT bytes=0;GetRawInputData(reinterpret_cast<HRAWINPUT>(lp),RID_INPUT,nullptr,&bytes,sizeof(RAWINPUTHEADER));
         if(bytes&&bytes<65536){std::vector<BYTE> buffer(bytes);if(GetRawInputData(reinterpret_cast<HRAWINPUT>(lp),RID_INPUT,buffer.data(),&bytes,sizeof(RAWINPUTHEADER))==bytes){auto* raw=reinterpret_cast<RAWINPUT*>(buffer.data());if(raw->header.dwType==RIM_TYPEMOUSE){const auto& mouse=raw->data.mouse;for(const auto& device:devices)if(device.handle==raw->header.hDevice){
             int index=FindProfile(config,device);bool sideDown=(mouse.usButtonFlags&(RI_MOUSE_BUTTON_4_DOWN|RI_MOUSE_BUTTON_5_DOWN))!=0;
-            if(index>=0&&sideDown&&GetForegroundWindow()==window&&modal==Modal::None){bool changed=active!=index||!selectionConfirmed;int button=(mouse.usButtonFlags&RI_MOUSE_BUTTON_4_DOWN)?0:1;auto& profile=config.profiles[index];if(profile.singleSideIndex!=button){if(profile.sideCount==1){profile.bindings[button]=profile.bindings[profile.singleSideIndex];profile.bindings[profile.singleSideIndex]={};}profile.singleSideIndex=button;changed=true;}active=selected=index;selectionConfirmed=true;config.preferredProfile=profile.id;if(changed){Save();UpdateMapping();Notify(L"已识别当前鼠标："+profile.name);}}
+            if(index>=0&&sideDown&&GetForegroundWindow()==window&&modal==Modal::None){bool changed=active!=index||!selectionConfirmed;int button=(mouse.usButtonFlags&RI_MOUSE_BUTTON_4_DOWN)?0:1;auto& profile=config.profiles[index];if(profile.singleSideIndex!=button){if(profile.sideCount==1){for(auto& scheme:profile.schemes){scheme.bindings[button]=scheme.bindings[profile.singleSideIndex];scheme.bindings[profile.singleSideIndex]={};}}profile.singleSideIndex=button;changed=true;}active=selected=index;selectionConfirmed=true;config.preferredProfile=profile.id;if(changed){Save();UpdateMapping();Notify(L"已识别当前鼠标："+profile.name);}}
             else if(index>=0&&active>=0&&index!=active&&(mouse.lLastX||mouse.lLastY||sideDown)&&GetForegroundWindow()!=window){active=-1;selectionConfirmed=false;UpdateMapping();Notify(L"检测到另一鼠标输入，映射暂停；打开侧映并按侧键确认",true);}
             if(index==selected&&sideDown){highlight=(mouse.usButtonFlags&RI_MOUSE_BUTTON_4_DOWN)?0:1;SetTimer(window,HighlightTimer,650,nullptr);InvalidateRect(window,nullptr,FALSE);}break;
         }}}}
@@ -286,13 +324,21 @@ LRESULT App::Handle(UINT message,WPARAM wp,LPARAM lp) {
             ok=ok&&((GetWindowLongPtrW(quickWindow,GWL_EXSTYLE)&WS_EX_NOACTIVATE)!=0);
             config.enabled=false;
             if(!config.profiles.empty()){
-                selected=0;OpenEdit(0);Activate(PresetBase);Activate(SaveBinding);
-                Config verification;std::wstring error;ok=ok&&LoadConfig(configPath,verification,error)&&!verification.enabled&&!verification.profiles.empty()&&verification.profiles[0].bindings[0]==presets[0];
+                selected=0;auto button=PhysicalButton(config.profiles[0],0);auto originalScheme=config.profiles[0].activeScheme;OpenEdit(button);Activate(PresetBase);Activate(SaveBinding);
+                auto previousCount=config.profiles[0].schemes.size();
+                Activate(NewScheme);if(nameEdit){SetWindowTextW(nameEdit,L"集成测试方案");Activate(SaveName);}else ok=false;
+                ok=ok&&config.profiles[0].schemes.size()==previousCount+1;
+                auto addedScheme=config.profiles[0].activeScheme;
+                OpenEdit(button);Activate(PresetBase+1);Activate(SaveBinding);
+                Activate(SchemeBase+int(originalScheme));ok=ok&&CurrentBindings(config.profiles[0])[button]==presets[0];
+                SwitchScheme(0,addedScheme);ok=ok&&CurrentBindings(config.profiles[0])[button]==presets[1];
+                Activate(RenameScheme);if(nameEdit){SetWindowTextW(nameEdit,L"办公测试");Activate(SaveName);}else ok=false;
+                Config verification;std::wstring error;ok=ok&&LoadConfig(configPath,verification,error)&&!verification.enabled&&!verification.profiles.empty()&&CurrentBindings(verification.profiles[0])[button]==presets[1]&&CurrentScheme(verification.profiles[0]).name==L"办公测试"&&verification.profiles[0].activeScheme==addedScheme;
                 modal=Modal::Settings;CloseModal();
             }
             smokeResult=ok?0:3;
             std::ofstream report(configPath.parent_path()/L"native-smoke-result.txt");
-            report<<(ok?"PASS":"FAIL")<<": native window, input hooks, raw input registration, no-activate quick window, isolated config save, dialog actions, and clean shutdown.\n";
+            report<<(ok?"PASS":"FAIL")<<": native window, hooks, tray, scheme create/rename/edit/switch, independent bindings, persisted selection, isolated config, and clean shutdown.\n";
             report<<"hook_ready="<<engineReady<<" raw_ready="<<rawReady<<" tray_ready="<<trayReady<<" candidates="<<devices.size()<<"\n";
             report.close();exiting=true;DestroyWindow(window);return 0;
         }
@@ -322,7 +368,7 @@ int App::Run(HINSTANCE instance,const std::filesystem::path& smokeFolder) {
     taskbarCreated=RegisterWindowMessageW(L"TaskbarCreated");AddTray();
     hotkeyReady=RegisterHotKey(window,1,MOD_CONTROL|MOD_ALT|MOD_NOREPEAT,'M')!=FALSE;
     RAWINPUTDEVICE mouse{0x01,0x02,RIDEV_INPUTSINK|RIDEV_DEVNOTIFY,window};rawReady=RegisterRawInputDevices(&mouse,1,sizeof(mouse))!=FALSE;
-    engineReady=input.Start(window);if(smokeMode)config.enabled=false;RefreshDevices(true);
+    engineReady=input.Start(window);if(smokeMode){config=Config{};config.enabled=false;canWrite=true;}RefreshDevices(true);
     if(!canWrite)Notify(configError,true);else if(!engineReady||!rawReady)Notify(RoutingStatus(),true);else if(!hotkeyReady)Notify(L"速览快捷键被占用，可从托盘菜单打开");
     if((!background||!trayReady)&&!smokeMode)ShowMain();
     if(smokeMode)SetTimer(window,500,500,nullptr);
@@ -336,14 +382,18 @@ int App::Run(HINSTANCE instance,const std::filesystem::path& smokeFolder) {
 bool App::RenderPreviews(const std::filesystem::path& folder) {
     previewMode=true;engineReady=true;rawReady=true;hotkeyReady=true;selectionConfirmed=true;
     if(!graphics.Init())return false;
-    Profile a;a.id=L"demo-a";a.hardwareId=L"demo-a";a.name=L"鼠标 A";a.sideCount=1;a.bindings[0]={ModAlt,VK_TAB};
-    Profile b;b.id=L"demo-b";b.hardwareId=L"demo-b";b.name=L"鼠标 B";b.sideCount=2;b.bindings={Binding{ModCtrl,'C'},Binding{ModCtrl,'V'}};
+    Profile a;a.id=L"demo-a";a.hardwareId=L"demo-a";a.name=L"鼠标 A";a.sideCount=1;CurrentBindings(a)[0]={ModAlt,VK_TAB};
+    Profile b;b.id=L"demo-b";b.hardwareId=L"demo-b";b.name=L"鼠标 B";b.sideCount=2;CurrentBindings(b)={Binding{ModCtrl,'C'},Binding{ModCtrl,'V'}};
+    CurrentScheme(b).name=L"办公";std::wstring schemeError;AddScheme(b,L"浏览",schemeError);CurrentBindings(b)={Binding{ModCtrl,VK_TAB},Binding{ModCtrl,'W'}};b.activeScheme=0;
     config.profiles={a,b};selected=active=1;Device d;d.id=b.id;d.hardwareId=b.hardwareId;devices={d};
     std::filesystem::create_directories(folder);
     bool ok=graphics.SaveImage(folder/L"native-main.png",UINT(W),UINT(H),[&](Painter& p){DrawMain(p);});
-    modal=Modal::Edit;draft=b.bindings[0];ok=graphics.SaveImage(folder/L"native-editor.png",UINT(W),UINT(H),[&](Painter& p){DrawMain(p);})&&ok;
+    modal=Modal::Edit;draft=CurrentBindings(b)[0];ok=graphics.SaveImage(folder/L"native-editor.png",UINT(W),UINT(H),[&](Painter& p){DrawMain(p);})&&ok;
     modal=Modal::Settings;ok=graphics.SaveImage(folder/L"native-settings.png",UINT(W),UINT(H),[&](Painter& p){DrawMain(p);})&&ok;
     modal=Modal::None;ok=graphics.SaveImage(folder/L"native-quick.png",328,232,[&](Painter& p){DrawQuick(p);})&&ok;
+    config.profiles[1].activeScheme=1;
+    ok=graphics.SaveImage(folder/L"native-browsing.png",UINT(W),UINT(H),[&](Painter& p){DrawMain(p);})&&ok;
+    ok=graphics.SaveImage(folder/L"native-browsing-quick.png",328,232,[&](Painter& p){DrawQuick(p);})&&ok;
     selected=0;ok=graphics.SaveImage(folder/L"native-one-button.png",UINT(W),UINT(H),[&](Painter& p){DrawMain(p);})&&ok;
     return ok;
 }

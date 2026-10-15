@@ -2,8 +2,8 @@
 101 ICON "assets/side-mapping.ico"
 1 RT_MANIFEST "app.manifest"
 1 VERSIONINFO
-FILEVERSION 0,1,0,0
-PRODUCTVERSION 0,1,0,0
+FILEVERSION 0,2,0,0
+PRODUCTVERSION 0,2,0,0
 FILEOS VOS_NT_WINDOWS32
 FILETYPE VFT_APP
 BEGIN
@@ -13,7 +13,7 @@ BEGIN
   BEGIN
    VALUE "FileDescription", "SideMapping - Mouse Shortcuts\0"
    VALUE "ProductName", "SideMapping\0"
-   VALUE "FileVersion", "0.1.0\0"
+   VALUE "FileVersion", "0.2.0\0"
    VALUE "LegalCopyright", "MIT License\0"
   END
  END
