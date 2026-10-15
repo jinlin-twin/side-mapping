@@ -1,0 +1,10 @@
+.tools/
+build/
+dist/
+*.zip
+.vs/
+*.user
+*.suo
+config.json
+config.json.*
+*.log
