@@ -32,6 +32,10 @@ int wmain(int argc,wchar_t** argv) {
         Check(HardwareIdentity(L"\\\\?\\HID#VID_046D&PID_C077#port-one",L"USB Mouse")==HardwareIdentity(L"\\\\?\\HID#VID_046D&PID_C077#port-two",L"USB Mouse"),"hardware identity independent of USB port");
         Check(HardwareIdentity(L"unknown-one",L"")!=HardwareIdentity(L"unknown-two",L""),"unknown devices never share an empty identity");
         Check(Wide(Utf8(b.name))==b.name,"UTF-8 conversion");
+        const std::wstring damagedName=L"鼠标 "+std::wstring(1,wchar_t(0xD800));
+        Check(Wide(Utf8(damagedName))==L"鼠标 \uFFFD","invalid UTF-16 is replaced while retaining the rest of the name");
+        Config damagedConfig=original;damagedConfig.profiles[0].name=damagedName;
+        Check(SaveConfig(folder/L"surrogate.json",damagedConfig,error)&&LoadConfig(folder/L"surrogate.json",damagedConfig,error)&&damagedConfig.profiles[0].name==L"鼠标 \uFFFD","repaired device name survives config restart");
         Check(ValidBinding({})&&ValidBinding({ModCtrl|ModShift,'K'}),"valid bindings");
         Check(!ValidBinding({32,'C'})&&!ValidBinding({ModCtrl,0})&&!ValidBinding({0,VK_CONTROL})&&!ValidBinding({0,999}),"invalid bindings rejected");
         auto corrupt=folder/L"corrupt.json";{std::ofstream file(corrupt);file<<"{malformed";}
@@ -137,10 +141,21 @@ int wmain(int argc,wchar_t** argv) {
         Check(PhysicalButton(reversed,0)==1,"single side button may report XButton2");
         auto effective=EffectiveBindings(reversed);
         Check(!effective[0].key&&effective[1]==CurrentBindings(a)[0],"only the learned physical side button is mapped");
+        Profile learned=a;AddScheme(learned,L"浏览",error);CurrentBindings(learned)[0]={ModCtrl,'W'};
+        Check(LearnSingleSideButton(learned,1)&&learned.singleSideIndex==1,"single side button learns XButton2");
+        Check(learned.schemes[0].bindings[1]==Binding{ModAlt,VK_TAB}&&learned.schemes[1].bindings[1]==Binding{ModCtrl,'W'},"learning moves every scheme without losing independent bindings");
+        Check(!learned.schemes[0].bindings[0].key&&!learned.schemes[1].bindings[0].key,"old physical button cleared in every scheme");
+        Check(!LearnSingleSideButton(learned,1)&&!LearnSingleSideButton(learned,-1)&&!LearnSingleSideButton(learned,2),"repeat and invalid learning do not modify the profile");
+        Check(LearnSingleSideButton(learned,0)&&CurrentBindings(learned)[0]==Binding{ModCtrl,'W'},"single side button can be relearned without losing its binding");
+        const auto doubleBindings=CurrentBindings(b);const int doubleIndex=b.singleSideIndex;
+        Check(!LearnSingleSideButton(b,1)&&!LearnSingleSideButton(b,0)&&b.singleSideIndex==doubleIndex&&CurrentBindings(b)==doubleBindings,"alternating two side buttons never changes mappings or learning state");
         Check(BuildShortcutInput({ModCtrl|ModAlt|ModShift|ModWin,'K'},0,false).size()==10,"four modifiers produce balanced input");
         auto arrow=BuildShortcutInput({ModCtrl,VK_RIGHT},0,false);
         Check((arrow[1].ki.dwFlags&KEYEVENTF_EXTENDEDKEY)!=0&&(arrow[2].ki.dwFlags&KEYEVENTF_EXTENDEDKEY)!=0,"navigation keys retain extended-key flags");
         Check(ActionName({ModCtrl,'C'})==L"复制"&&ShortcutText({ModCtrl|ModShift,'K'})==L"Ctrl + Shift + K","human-readable shortcut labels");
+        Check(ActionName({ModCtrl,'W'})==L"关闭标签页"&&ActionName({ModWin|ModShift,'S'})==L"截图"&&ActionName({ModAlt,VK_LEFT})==L"后退","preset shortcuts have readable names");
+        Check(!Utf8(std::wstring(L"鼠标")+wchar_t(0xD83D)).empty(),"lone surrogate in a device name still converts to UTF-8");
+        {auto injected=BuildShortcutInput({ModCtrl,'C'},0,false);Check(!injected.empty()&&injected[1].ki.wScan!=0,"injected keys carry scan codes");}
         auto mice=EnumerateMice();
         Device virtualDevice;virtualDevice.path=L"HID_DEVICE_SYSTEM_VHF&COL04";virtualDevice.reportedButtons=5;
         Check(!IsMouseCandidate(virtualDevice),"system virtual mice excluded from automatic selection");

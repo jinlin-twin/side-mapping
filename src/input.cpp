@@ -14,7 +14,7 @@ MouseDecision MappingLogic::Process(int index,bool down,bool injected,bool ownWi
 std::vector<INPUT> BuildShortcutInput(const Binding& b,unsigned held,bool keyDown) {
     std::vector<INPUT> inputs;
     if(!b.key||!ValidBinding(b)||keyDown)return inputs;
-    auto append=[&](unsigned key,bool up){INPUT i{};i.type=INPUT_KEYBOARD;i.ki.wVk=WORD(key);i.ki.dwFlags=up?KEYEVENTF_KEYUP:0;if(key==VK_LEFT||key==VK_RIGHT||key==VK_UP||key==VK_DOWN||key==VK_INSERT||key==VK_DELETE||key==VK_HOME||key==VK_END||key==VK_PRIOR||key==VK_NEXT||key==VK_DIVIDE||key==VK_NUMLOCK||key==VK_SNAPSHOT||key==VK_LWIN||key==VK_RWIN)i.ki.dwFlags|=KEYEVENTF_EXTENDEDKEY;i.ki.dwExtraInfo=0x53494445;inputs.push_back(i);};
+    auto append=[&](unsigned key,bool up){INPUT i{};i.type=INPUT_KEYBOARD;i.ki.wVk=WORD(key);i.ki.dwFlags=up?KEYEVENTF_KEYUP:0;if(key==VK_LEFT||key==VK_RIGHT||key==VK_UP||key==VK_DOWN||key==VK_INSERT||key==VK_DELETE||key==VK_HOME||key==VK_END||key==VK_PRIOR||key==VK_NEXT||key==VK_DIVIDE||key==VK_NUMLOCK||key==VK_SNAPSHOT||key==VK_LWIN||key==VK_RWIN)i.ki.dwFlags|=KEYEVENTF_EXTENDEDKEY;i.ki.wScan=WORD(MapVirtualKeyW(key,MAPVK_VK_TO_VSC));i.ki.dwExtraInfo=0x53494445;inputs.push_back(i);};
     const std::array<std::pair<unsigned,unsigned>,4> mods={{{ModCtrl,VK_CONTROL},{ModAlt,VK_MENU},{ModShift,VK_SHIFT},{ModWin,VK_LWIN}}};
     for(auto [flag,key]:mods)if((b.modifiers&flag)&&!(held&flag))append(key,false);
     append(b.key,false);append(b.key,true);

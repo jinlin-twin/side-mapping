@@ -12,7 +12,7 @@ try {
     & (Join-Path $compilerDirectory 'llvm-windres.exe') '-i' 'app.rc' '-o' 'build\app-res.o' '-O' 'coff'
     if ($LASTEXITCODE -ne 0) { throw 'Resource build failed.' }
     $common = @('-std=c++20','-O2','-Wall','-Wextra','-Wno-missing-field-initializers','-DUNICODE','-D_UNICODE','-D_WIN32_WINNT=0x0A00','-DNOMINMAX','-Isrc','-Ithird_party','-static','-finput-charset=UTF-8')
-    $libraries = @('-ld2d1','-ldwrite','-ldwmapi','-lwindowscodecs','-lole32','-luuid','-lshell32','-luser32','-lgdi32','-ladvapi32','-lhid')
+    $libraries = @('-ld2d1','-ldwrite','-ldwmapi','-lwindowscodecs','-lole32','-luuid','-lshell32','-lshcore','-luser32','-lgdi32','-ladvapi32','-lhid')
     & $compiler @common '-municode' '-mwindows' 'src\main.cpp' 'src\app.cpp' 'src\paint.cpp' 'src\model.cpp' 'src\input.cpp' 'build\app-res.o' @libraries '-o' 'dist\侧映.exe' '-Wl,--strip-all'
     if ($LASTEXITCODE -ne 0) { throw 'Application build failed.' }
     Write-Output ('Built: ' + (Join-Path $distribution '侧映.exe'))

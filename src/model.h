@@ -52,6 +52,7 @@ bool AddScheme(Profile&,const std::wstring& name,std::wstring& error);
 bool RenameCurrentScheme(Profile&,const std::wstring& name,std::wstring& error);
 bool DeleteCurrentScheme(Profile&,std::wstring& error);
 int PhysicalButton(const Profile&,int displayedIndex);
+bool LearnSingleSideButton(Profile&,int physicalIndex);
 std::array<Binding,2> EffectiveBindings(const Profile&);
 bool LoadConfig(const std::filesystem::path&, Config&, std::wstring& error);
 bool SaveConfig(const std::filesystem::path&, const Config&, std::wstring& error);
@@ -59,6 +60,6 @@ std::vector<Device> EnumerateMice();
 bool IsMouseCandidate(const Device&);
 std::wstring HardwareIdentity(const std::wstring& path, const std::wstring& product);
 int FindProfile(const Config&, const Device&);
-bool IsStartupEnabled();
+bool IsStartupEnabled(const std::wstring& executable);
 bool SetStartupEnabled(bool enabled, const std::wstring& executable, std::wstring& error);
 }

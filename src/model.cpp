@@ -12,10 +12,14 @@ namespace side {
 using nlohmann::json;
 std::string Utf8(const std::wstring& text) {
     if(text.empty()) return {};
-    int n=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,text.data(),int(text.size()),nullptr,0,nullptr,nullptr);
+    DWORD flags=WC_ERR_INVALID_CHARS;
+    int n=WideCharToMultiByte(CP_UTF8,flags,text.data(),int(text.size()),nullptr,0,nullptr,nullptr);
+    // A lone surrogate (e.g. from a device name) must not turn the whole string into "" and make the
+    // saved config unreadable; fall back to U+FFFD replacement instead.
+    if(!n){flags=0;n=WideCharToMultiByte(CP_UTF8,flags,text.data(),int(text.size()),nullptr,0,nullptr,nullptr);}
     if(!n) return {};
     std::string result(n,'\0');
-    WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,text.data(),int(text.size()),result.data(),n,nullptr,nullptr);
+    WideCharToMultiByte(CP_UTF8,flags,text.data(),int(text.size()),result.data(),n,nullptr,nullptr);
     return result;
 }
 std::wstring Wide(const std::string& text) {
@@ -33,6 +37,12 @@ bool ValidBinding(const Binding& b) {
     return b.modifiers<=15 && b.key<=254 && (b.key==0 ? b.modifiers==0 : (b.key>=VK_BACK && !IsModifier(b.key) && b.key!=VK_PACKET && b.key!=VK_PROCESSKEY));
 }
 int PhysicalButton(const Profile& profile,int displayedIndex){return profile.sideCount==1?profile.singleSideIndex:displayedIndex;}
+bool LearnSingleSideButton(Profile& profile,int physicalIndex) {
+    if(profile.sideCount!=1||physicalIndex<0||physicalIndex>1||profile.singleSideIndex==physicalIndex)return false;
+    for(auto& scheme:profile.schemes){scheme.bindings[physicalIndex]=scheme.bindings[profile.singleSideIndex];scheme.bindings[profile.singleSideIndex]={};}
+    profile.singleSideIndex=physicalIndex;
+    return true;
+}
 MappingScheme& CurrentScheme(Profile& p){return p.schemes.at(p.activeScheme);}
 const MappingScheme& CurrentScheme(const Profile& p){return p.schemes.at(p.activeScheme);}
 std::array<Binding,2>& CurrentBindings(Profile& p){return CurrentScheme(p).bindings;}
@@ -73,10 +83,16 @@ std::wstring ShortcutText(const Binding& b) {
 std::wstring ActionName(const Binding& b) {
     if(!b.key)return L"原始功能";
     if(b.modifiers==ModCtrl) {
-        switch(b.key){case 'C':return L"复制";case 'V':return L"粘贴";case 'Z':return L"撤销";case 'X':return L"剪切";case 'S':return L"保存";case 'A':return L"全选";case 'F':return L"查找";}
+        switch(b.key){case 'C':return L"复制";case 'V':return L"粘贴";case 'Z':return L"撤销";case 'Y':return L"重做";case 'X':return L"剪切";case 'S':return L"保存";case 'A':return L"全选";case 'F':return L"查找";case 'W':return L"关闭标签页";case 'T':return L"新建标签页";case VK_TAB:return L"下一个标签页";}
     }
+    if(b.modifiers==(ModCtrl|ModShift)&&b.key==VK_TAB)return L"上一个标签页";
+    if(b.modifiers==(ModCtrl|ModShift)&&b.key=='T')return L"恢复标签页";
     if(b.modifiers==ModAlt&&b.key==VK_TAB)return L"切换窗口";
+    if(b.modifiers==ModAlt&&b.key==VK_LEFT)return L"后退";
+    if(b.modifiers==ModAlt&&b.key==VK_RIGHT)return L"前进";
     if(b.modifiers==ModWin&&b.key=='D')return L"显示桌面";
+    if(b.modifiers==ModWin&&b.key==VK_TAB)return L"任务视图";
+    if(b.modifiers==(ModWin|ModShift)&&b.key=='S')return L"截图";
     return L"自定义快捷键";
 }
 bool LoadConfig(const std::filesystem::path& path, Config& config, std::wstring& error) {
@@ -188,10 +204,12 @@ bool IsMouseCandidate(const Device& device) {
     if(path.find(L"hid_device_system_vhf")!=std::wstring::npos||path.find(L"rdp_mou")!=std::wstring::npos)return false;
     return device.reportedButtons==0||device.reportedButtons>=4;
 }
-bool IsStartupEnabled() {
-    HKEY key=nullptr;
-    if(RegOpenKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",0,KEY_QUERY_VALUE,&key)!=ERROR_SUCCESS)return false;
-    LONG result=RegQueryValueExW(key,L"SideMapping",nullptr,nullptr,nullptr,nullptr);RegCloseKey(key);return result==ERROR_SUCCESS;
+// Portable builds move around: an entry that points at another copy of the program does not count.
+bool IsStartupEnabled(const std::wstring& executable) {
+    wchar_t value[4096]{};DWORD bytes=sizeof(value);
+    if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",L"SideMapping",RRF_RT_REG_SZ,nullptr,value,&bytes)!=ERROR_SUCCESS)return false;
+    const std::wstring expected=L"\""+executable+L"\" --background";
+    return CompareStringOrdinal(value,-1,expected.c_str(),-1,TRUE)==CSTR_EQUAL;
 }
 bool SetStartupEnabled(bool enabled,const std::wstring& executable,std::wstring& error) {
     HKEY key=nullptr;

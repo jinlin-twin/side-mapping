@@ -8,3 +8,4 @@ dist/
 config.json
 config.json.*
 *.log
+/side-mapping-0.3.0-changed-files/
